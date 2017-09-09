@@ -1,0 +1,384 @@
+CREATE DATABASE IF NOT EXISTS cards;
+CREATE DATABASE IF NOT EXISTS retail_stage;
+
+
+CREATE TABLE deck_of_cards (
+COLOR string,
+SUIT string,
+PIP string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+STORED AS TEXTFILE;
+
+--mkdir -p /home/cards
+
+LOAD DATA LOCAL INPATH '/home/cards/deckofcards.txt' INTO TABLE deck_of_cards;
+
+
+CREATE EXTERNAL TABLE deck_of_cards_external (
+	COLOR string,
+	SUIT string,
+	PIP string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+STORED AS TEXTFILE
+LOCATION '/apps/hive/warehouse/cards.db/deck_of_cards';
+
+
+USE retail_stage;
+
+CREATE TABLE orders_demo (
+order_id int,
+order_date string,
+order_customer_id int,
+order_status string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY ','
+STORED AS TEXTFILE;
+
+
+
+-- Copie o arquivo descompactado para o HDFS 
+
+scp -p 2222 deckofcards.txt root@sandbox.hortonworks.com:/root
+
+hadoop fs -mkdir /user/root/cards
+
+hadoop fs -put deckofcards.txt /user/root/cards
+
+hadoop fs -ls /user/root/cards
+
+
+USE cards;
+
+CREATE EXTERNAL TABLE deck_of_cards_external
+(color string,
+suit string,
+pip string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+LOCATION '/user/root/cards';
+
+DESCRIBE FORMATTED deck_of_cards_external;
+
+SELECT * FROM deck_of_cards_external LIMIT 10;
+
+
+use retail_stage;
+
+CREATE TABLE categories (
+category_id int,
+category_department_id int,
+category_name string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+STORED AS TEXTFILE;
+
+CREATE TABLE customers (
+customer_id       int,
+customer_fname    string,
+customer_lname    string,
+customer_email    string,
+customer_password string,
+customer_street   string,
+customer_city     string,
+customer_state    string,
+customer_zipcode  string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+STORED AS TEXTFILE;
+
+CREATE TABLE departments (
+department_id int,
+department_name string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+STORED AS TEXTFILE;
+
+
+-- criar as particoes dinamicamente.
+set hive.exec.dynamic.partition;
+
+-- Setar a propriedade para nonstrict
+set hive.exec.dynamic.partition.mode;
+
+CREATE TABLE orders (
+order_id int,
+order_date string,
+order_customer_id int,
+order_status string)
+PARTITIONED BY (order_month string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+STORED AS TEXTFILE;
+
+describe formatted orders;
+
+-- antes de criar a particao, o comando nao exibira nada.
+
+dfs -ls hdfs://sandbox.hortonworks.com:8020/apps/hive/warehouse/retail_ods.db/orders;
+
+ALTER TABLE orders ADD PARTITION (order_month='2014-01');
+
+-- apos acriacaoda particao, o comando ls exibira a particao criada
+
+dfs -ls hdfs://sandbox.hortonworks.com:8020/apps/hive/warehouse/retail_ods.db/orders;
+
+CREATE TABLE order_items (
+order_item_id int,
+order_item_order_id int,
+order_item_order_date string,
+order_item_product_id int,
+order_item_quantity smallint,
+order_item_subtotal float,
+order_item_product_price float)
+PARTITIONED BY (order_month string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+STORED AS TEXTFILE;
+
+
+CREATE TABLE products (
+product_id int, 
+product_category_id int,
+product_name string,
+product_description string,
+product_price float,
+product_image string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+STORED AS TEXTFILE;
+
+
+CREATE EXTERNAL TABLE categories
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
+STORED AS INPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'
+LOCATION 'hdfs:///apps/hive/warehouse/retail_stage.db/categories'
+TBLPROPERTIES ('avro.schema.url'='hdfs://sandbox.hortonworks.com/user/root/retail_stage/sqoop_import_categories.avsc');
+
+CREATE EXTERNAL TABLE customers
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
+STORED AS INPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'
+LOCATION 'hdfs:///apps/hive/warehouse/retail_stage.db/customers'
+TBLPROPERTIES ('avro.schema.url'='hdfs://sandbox.hortonworks.com/user/root/retail_stage/customers.avsc');
+
+CREATE EXTERNAL TABLE departments
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
+STORED AS INPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'
+LOCATION 'hdfs:///apps/hive/warehouse/retail_stage.db/departments'
+TBLPROPERTIES ('avro.schema.url'='hdfs://sandbox.hortonworks.com/user/root/retail_stage/departments.avsc');
+
+CREATE EXTERNAL TABLE orders
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
+STORED AS INPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'
+LOCATION 'hdfs:///apps/hive/warehouse/retail_stage.db/orders'
+TBLPROPERTIES ('avro.schema.url'='hdfs://sandbox.hortonworks.com/user/root/retail_stage/orders.avsc');
+
+CREATE EXTERNAL TABLE order_items
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
+STORED AS INPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'
+LOCATION 'hdfs:///apps/hive/warehouse/retail_stage.db/order_items'
+TBLPROPERTIES ('avro.schema.url'='hdfs://sandbox.hortonworks.com/user/root/retail_stage/order_items.avsc');
+
+CREATE EXTERNAL TABLE products
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.avro.AvroSerDe'
+STORED AS INPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.avro.AvroContainerOutputFormat'
+LOCATION 'hdfs:///apps/hive/warehouse/retail_stage.db/products'
+TBLPROPERTIES ('avro.schema.url'='hdfs://sandbox.hortonworks.com/user/root/retail_stage/products.avsc');
+
+
+====== Define a bucketed Hive table ======
+
+CREATE TABLE orders_bucket (
+order_id int,
+order_date string,
+order_customer_id int,
+order_status string
+)
+CLUSTERED BY (order_id) INTO 16 BUCKETS
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+STORED AS TEXTFILE;
+
+insert into table orders_bucket
+SELECT ORDER_ID, from_unixtime (cast(substr(order_date(1,10) as bigint)) order_date, order_customer_id, order_status from retail_stage.orders;
+
+describe formatted orders_bucket;
+
+-- Validar visualizando os arquivos gerados pelo bucket (16)
+dfs -ls hdfs://sandbox.hortonworks.com:8020/apps/hive/warehouse/retail_ods.db/orders_bucket
+
+CREATE TABLE order_items_bucket (
+order_item_id int,
+order_item_order_id int,
+order_item_order_date string,
+order_item_product_id int,
+order_item_quantity smallint,
+order_item_subtotal float,
+order_item_product_price float
+)
+CLUSTERED BY (order_item_order_id) INTO 16 BUCKETS
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+STORED AS TEXTFILE;
+
+====== Define a Hive table from a select query ======
+
+
+create table orders_orc 
+row format delimited fields terminated by ':' 
+stored as orc
+as select * from retail_stage.orders;
+
+-- Validar a tabela (Storage information)
+describe formatted orders_orc;
+
+show create table order_orc;
+
+====== Specify the storage format of a Hive table ======
+
+--ok
+
+====== Load data into a Hive table from a local directory =======
+
+
+--Load data from HDFS into hive table (append data to existing table), file user /user/root/cards will be deleted
+LOAD DATA INPATH '/user/root/cards/deckofcards.txt' INTO TABLE deck_of_cards;
+
+
+====== Load data into a Hive table from an HDFS directory ======
+
+-- Loads data from local file system (overwrite existing data)
+LOAD DATA LOCAL INPATH '/root/demo/data/cards/deckofcards.txt' OVERWRITE INTO TABLE deck_of_cards;
+
+
+====== Load a compressed data file into a Hive table ======
+
+-- Baixar o arquivo largedeck.txt.gz do repositorio
+--wget largedeck
+
+-- copiar o arquivo para o HDFS
+scp -P 2222 /home/analyticae/hortonworks/hive/largedeck.txt.gz root@sandbox.hortonworks.com:/root/
+
+-- carrega os dados do arquivo compactado na tabela
+LOAD DATA LOCAL INPATH 'largedeck.txt.gz' into table cards;
+
+-- validar a carga
+select * from cards;
+
+
+dfs -ls 
+
+
+
+=== hive load ====
+
+mysql -u root -p 
+
+update mysql.user set file_priv = 'Y' where user = 'root';
+
+commit;
+
+exit;
+
+-- rode o comando a seguir no prompt
+
+service mysqld restart
+
+mysql -u retail_dba -p 
+
+use retail_db;
+
+select * from categories into outfile '/tmp/categories01.psv' fields terminated by '|' lines terminated by '\n';
+
+select * from customers into outfile '/tmp/customers.psv' fields terminated by '|' lines terminated by '\n';
+
+select * from departments into outfile '/tmp/departments.psv' fields terminated by '|' lines terminated by '\n';
+
+select * from products into outfile '/tmp/products.psv' fields terminated by '|' lines terminated by '\n';
+
+
+load data local inpath '/tmp/categories01.psv' overwrite into table categories;
+
+load data local inpath '/tmp/customers.psv' overwrite into table customers;
+
+load data local inpath '/tmp/departments.psv' overwrite into table departments;
+
+load data local inpath '/tmp/products.psv' overwrite into table products;
+
+
+hadoop fs -mkdir /user/root/departments
+
+hadoop fs -put /tmp/departments.psv /user/root/departments
+
+hadoop fs -ls /user/root/departments
+
+hive
+
+use retail_stage;
+
+load data inpath '/user/root/departments/*' overwrite into table departments;
+
+hadoop fs -ls /user/root/departments
+
+== hive insert ====
+
+select * from orders into outfile '/tmp/orders.psv' fields terminated by '|' lines terminated by '\n';
+
+hive
+
+use retail_stage;
+
+CREATE TABLE orders_stage (
+order_id int,
+order_date string,
+order_customer_id int,
+order_status string)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'
+STORED AS TEXTFILE;
+
+load data local inpath '/tmp/orders.psv' overwrite into table orders_stage;
+
+insert overwrite table retail_ods.orders partition (order_month)
+select order_id, order_date, order_customer_id, order_status,
+substr(order_date, 1, 7) order_month from retail_stage.orders_stage;
+
+insert overwrite table order_items partition (order_month)
+select oi.order_item_id, oi.order_item_order_id, o.order_date,
+oi.order_item_product_id, oi.order_item_quantity, oi.order_item_subtotal,
+oi.order_item_product_price, substr(o.order_date, 1, 7)
+order_month from retail_stage.order_items oi join retail_stage.orders_stage o
+on oi.order_item_order_id = o.order_id;
+ 
+
+
+======== HIVE SQL  ========
+
+
+SELECT order_status, count(1) FROM orders
+WHERE order_date = '2013-12-14 00:00:00.0'
+GROUP BY order_status
+ORDER BY order_status;
+
+SELECT order_date, count(1) FROM orders
+WHERE order_date <= '2013-12-14 00:00:00.0' AND order_status = 'COMPLETE'
+GROUP BY order_date
+ORDER BY order_date;
+
+SELECT order_date, count(1) FROM orders
+WHERE order_date LIKE '2013-12%' AND order_status IN ('PENDING', 'PENDING_PAYMENT', 'PAYMENT_REVIEW', 'ON_HOLD')
+-- order_date LIKE '2013-12%' AND (order_status = 'PENDING' or order_status = 'PENDING_PAYMENT'....)
+GROUP BY order_date
+ORDER BY order_date;
+
+-- Query com Erro
+SELECT order_date, count(1) FROM orders
+WHERE order_date BETWEEN '2013-12-01 00:00:00.0' AND '2013-12-31 00:00:00.0'
+AND order_status LIKE 'PENDING%' OR order_status IN ('PAYMENT_REVIEW', 'ON_HOLD')
+GROUP BY order_date
+ORDER BY order_date;
+
+--Query Correta
+SELECT order_date, count(1) FROM orders
+WHERE order_date BETWEEN '2013-12-01 00:00:00.0' AND '2013-12-31 00:00:00.0'
+AND (order_status LIKE 'PENDING%' OR order_status IN ('PAYMENT_REVIEW', 'ON_HOLD'))
+GROUP BY order_date
+ORDER BY order_date;
+
+
+
+
